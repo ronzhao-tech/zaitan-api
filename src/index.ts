@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { authRouter } from './routes/auth-simple';
-import { articlesRouter } from './routes/articles';
+import { articlesRouter } from './routes/articles-simple';
 import { subscriptionRouter } from './routes/subscription';
 import { userRouter } from './routes/user';
 import { aiRouter } from './routes/ai';
