@@ -106,7 +106,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         await prisma.payment.create({
           data: {
             userId,
-            stripePaymentId: session.payment_intit as string,
+            stripePaymentId: session.payment_intent as string,
             amount: session.amount_total || 0,
             status: 'completed',
             plan: subscription.items.data[0].price.id === process.env.STRIPE_PRICE_MONTHLY ? 'MONTHLY' : 'YEARLY'
