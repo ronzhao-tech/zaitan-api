@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: zaitan-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://postgres:OHp9kNpkilyr6o7F@db.fqhctnvypxfdvuodbdaj.supabase.co:5432/postgres
+      - key: SUPABASE_URL
+        value: https://fqhctnvypxfdvuodbdaj.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxaGN0bnZ5cHhmZHZ1b2RiZGFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwODUxNjEsImV4cCI6MjA4NzY2MTE2MX0.K9LZt0l5AiH-JKbrIt0tgI22ZK4EJb9nxcAMwfksdYw
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxaGN0bnZ5cHhmZHZ1b2RiZGFqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjA4NTE2MSwiZXhwIjoyMDg3NjYxMTYxfQ.KuCbQ6LCUMS3fNtRUP8-reC-kzssL1dAZHdso3KfqC4
+      - key: JWT_SECRET
+        value: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://ronzhao-tech.github.io/zaitan-h5
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
