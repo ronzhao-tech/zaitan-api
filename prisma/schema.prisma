@@ -9,8 +9,10 @@ datasource db {
 
 model User {
   id            String    @id @default(uuid())
-  phone         String    @unique
+  phone         String?   @unique
   email         String?   @unique
+  wechatOpenId  String?   @unique
+  wechatUnionId String?   @unique
   name          String?
   avatar        String?
   subscription  Subscription?

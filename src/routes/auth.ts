@@ -3,13 +3,13 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { sendSMS, generateCode, saveCode, verifyCode } from '../services/sms';
+import { getWechatUserInfo } from '../services/wechat';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// 发送验证码（模拟）
-const verificationCodes = new Map<string, string>();
-
+// 发送验证码
 router.post('/send-code', async (req, res) => {
   const schema = z.object({
     phone: z.string().regex(/^1[3-9]\d{9}$/, '手机号格式不正确')
@@ -19,16 +19,22 @@ router.post('/send-code', async (req, res) => {
     const { phone } = schema.parse(req.body);
     
     // 生成6位验证码
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    verificationCodes.set(phone, code);
+    const code = generateCode();
     
-    // TODO: 接入短信服务商（阿里云/腾讯云）
-    console.log(`验证码 for ${phone}: ${code}`);
+    // 发送短信
+    const sent = await sendSMS(phone, code);
+    
+    if (!sent) {
+      return res.status(500).json({ error: '短信发送失败，请稍后重试' });
+    }
+    
+    // 保存验证码（5分钟有效）
+    saveCode(phone, code);
     
     res.json({ 
       success: true, 
       message: '验证码已发送',
-      // 开发环境返回验证码
+      // 开发环境返回验证码便于测试
       ...(process.env.NODE_ENV === 'development' && { code })
     });
   } catch (error) {
@@ -36,7 +42,7 @@ router.post('/send-code', async (req, res) => {
   }
 });
 
-// 登录/注册
+// 手机号登录/注册
 router.post('/login', async (req, res) => {
   const schema = z.object({
     phone: z.string().regex(/^1[3-9]\d{9}$/),
@@ -47,12 +53,10 @@ router.post('/login', async (req, res) => {
     const { phone, code } = schema.parse(req.body);
     
     // 验证验证码
-    const savedCode = verificationCodes.get(phone);
-    if (savedCode !== code && code !== '000000') { // 000000 为测试验证码
-      return res.status(400).json({ error: '验证码错误' });
+    const isValid = verifyCode(phone, code);
+    if (!isValid && code !== '000000') { // 000000 为测试验证码
+      return res.status(400).json({ error: '验证码错误或已过期' });
     }
-    
-    verificationCodes.delete(phone);
 
     // 查找或创建用户
     let user = await prisma.user.findUnique({ where: { phone } });
@@ -86,6 +90,59 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     res.status(400).json({ error: '登录失败', details: error });
+  }
+});
+
+// 微信登录
+router.post('/wechat', async (req, res) => {
+  const schema = z.object({
+    code: z.string().min(1)
+  });
+
+  try {
+    const { code } = schema.parse(req.body);
+    
+    // 获取微信用户信息
+    const wechatUser = await getWechatUserInfo(code);
+    
+    if (!wechatUser) {
+      return res.status(400).json({ error: '微信授权失败' });
+    }
+
+    // 查找或创建用户
+    let user = await prisma.user.findFirst({
+      where: { wechatOpenId: wechatUser.openid }
+    });
+    
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          wechatOpenId: wechatUser.openid,
+          wechatUnionId: wechatUser.unionid,
+          name: wechatUser.nickname || '微信用户',
+          avatar: wechatUser.headimgurl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${wechatUser.openid}`
+        }
+      });
+    }
+
+    // 生成 JWT
+    const token = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET!,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar
+      }
+    });
+  } catch (error) {
+    res.status(400).json({ error: '微信登录失败', details: error });
   }
 });
 
