@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-import { authRouter } from './routes/auth';
+import { authRouter } from './routes/auth-simple';
 import { articlesRouter } from './routes/articles';
 import { subscriptionRouter } from './routes/subscription';
 import { userRouter } from './routes/user';
@@ -14,7 +14,7 @@ import { aiRouter } from './routes/ai';
 import { errorHandler } from './middleware/error';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 9000;
 
 // 中间件
 app.use(helmet());

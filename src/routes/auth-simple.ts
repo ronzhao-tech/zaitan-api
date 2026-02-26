@@ -1,22 +1,12 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { sendSMS, generateCode, saveCode, verifyCode } from '../services/sms';
+import { sendSMS, generateCode } from '../services/sms';
 import { getWechatUserInfo } from '../services/wechat';
 import { memoryDB, generateUUID, saveMemoryCode, verifyMemoryCode } from '../services/memoryDB';
 
 const router = Router();
-let prisma: PrismaClient;
-
-// 尝试连接数据库，失败则使用内存模式
-try {
-  prisma = new PrismaClient();
-  console.log('[DB] 数据库连接成功');
-} catch (error) {
-  console.log('[DB] 数据库连接失败，使用内存模式');
-}
 
 // 发送验证码
 router.post('/send-code', async (req, res) => {
@@ -26,8 +16,6 @@ router.post('/send-code', async (req, res) => {
 
   try {
     const { phone } = schema.parse(req.body);
-    
-    // 生成6位验证码
     const code = generateCode();
     
     // 发送短信
@@ -37,15 +25,17 @@ router.post('/send-code', async (req, res) => {
       return res.status(500).json({ error: '短信发送失败，请稍后重试' });
     }
     
-    // 保存验证码到内存（5分钟有效）
+    // 保存验证码到内存
     saveMemoryCode(phone, code);
+    console.log(`[SMS] 验证码 ${code} 已保存到内存`);
     
     res.json({ 
       success: true, 
       message: '验证码已发送',
-      code // 返回验证码便于测试
+      code
     });
   } catch (error) {
+    console.error('[Send Code Error]', error);
     res.status(400).json({ error: '参数错误', details: error });
   }
 });
@@ -60,13 +50,13 @@ router.post('/login', async (req, res) => {
   try {
     const { phone, code } = schema.parse(req.body);
     
-    // 验证验证码（内存模式）
+    // 验证验证码
     const isValid = verifyMemoryCode(phone, code);
-    if (!isValid && code !== '000000') { // 000000 为测试验证码
+    if (!isValid && code !== '000000') {
       return res.status(400).json({ error: '验证码错误或已过期' });
     }
 
-    // 查找或创建用户（内存模式）
+    // 查找或创建用户
     let user = memoryDB.users.find(u => u.phone === phone);
     
     if (!user) {
@@ -122,19 +112,19 @@ router.post('/wechat', async (req, res) => {
     }
 
     // 查找或创建用户
-    let user = await prisma.user.findFirst({
-      where: { wechatOpenId: wechatUser.openid }
-    });
+    let user = memoryDB.users.find(u => u.wechatOpenId === wechatUser.openid);
     
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          wechatOpenId: wechatUser.openid,
-          wechatUnionId: wechatUser.unionid,
-          name: wechatUser.nickname || '微信用户',
-          avatar: wechatUser.headimgurl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${wechatUser.openid}`
-        }
-      });
+      user = {
+        id: generateUUID(),
+        wechatOpenId: wechatUser.openid,
+        wechatUnionId: wechatUser.unionid,
+        name: wechatUser.nickname || '微信用户',
+        avatar: wechatUser.headimgurl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${wechatUser.openid}`,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      memoryDB.users.push(user);
     }
 
     // 生成 JWT
@@ -154,6 +144,7 @@ router.post('/wechat', async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[Wechat Login Error]', error);
     res.status(400).json({ error: '微信登录失败', details: error });
   }
 });
@@ -161,18 +152,7 @@ router.post('/wechat', async (req, res) => {
 // 获取当前用户信息
 router.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      include: {
-        subscription: true,
-        _count: {
-          select: {
-            articles: true,
-            favorites: true
-          }
-        }
-      }
-    });
+    const user = memoryDB.users.find(u => u.id === req.user!.id);
 
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
@@ -183,13 +163,14 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       phone: user.phone,
       name: user.name,
       avatar: user.avatar,
-      subscription: user.subscription,
+      subscription: null,
       stats: {
-        articles: user._count.articles,
-        favorites: user._count.favorites
+        articles: 0,
+        favorites: 0
       }
     });
   } catch (error) {
+    console.error('[Get User Error]', error);
     res.status(500).json({ error: '获取用户信息失败' });
   }
 });
